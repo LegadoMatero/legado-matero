@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap"
+      rel="stylesheet"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0D0D0D" />
+
+    <!--
+      Protección contra la pantalla negra al traducir.
+      Cuando el navegador traduce la página, reorganiza el HTML por su
+      cuenta. Cuando React después intenta actualizar esos mismos
+      elementos, no los encuentra donde los dejó y la app se cae (se ve
+      todo negro por el fondo oscuro). Este script hace que, en vez de
+      caerse, React ignore ese movimiento puntual y siga funcionando.
+    -->
+    <script>
+      (function () {
+        if (typeof Node !== 'function' || !Node.prototype) return
+
+        var originalRemoveChild = Node.prototype.removeChild
+        Node.prototype.removeChild = function (child) {
+          if (child.parentNode !== this) {
+            if (console && console.warn) {
+              console.warn(
+                'Se evitó un error al traducir la página (removeChild).',
+              )
+            }
+            return child
+          }
+          return originalRemoveChild.apply(this, arguments)
+        }
+
+        var originalInsertBefore = Node.prototype.insertBefore
+        Node.prototype.insertBefore = function (newNode, referenceNode) {
+          if (referenceNode && referenceNode.parentNode !== this) {
+            if (console && console.warn) {
+              console.warn(
+                'Se evitó un error al traducir la página (insertBefore).',
+              )
+            }
+            return newNode
+          }
+          return originalInsertBefore.apply(this, arguments)
+        }
+      })()
+    </script>
+
+    <!-- Título y descripción que muestra Google -->
+    <title>LEGADO MATERO · No vendemos mates. Compartimos un legado.</title>
+    <meta
+      name="description"
+      content="Mates, termos y bombillas con identidad argentina. No vendemos mates, compartimos un legado que se transmite generación tras generación."
+    />
+
+    <!--
+      Vista previa al compartir el link (WhatsApp, Instagram, Fiverr, LinkedIn).
+      Si más adelante se conecta un dominio propio, hay que cambiar
+      las direcciones de og:url y og:image por las del dominio nuevo.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="LEGADO MATERO" />
+    <meta property="og:locale" content="es_AR" />
+    <meta
+      property="og:title"
+      content="LEGADO MATERO · No vendemos mates. Compartimos un legado."
+    />
+    <meta
+      property="og:description"
+      content="Mates, termos y bombillas con identidad argentina y tradición familiar. Cada mate tiene una historia para seguir compartiendo."
+    />
+    <meta property="og:url" content="https://legado-matero.vercel.app/" />
+    <meta
+      property="og:image"
+      content="https://legado-matero.vercel.app/og-image.png"
+    />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="LEGADO MATERO: No vendemos mates. Compartimos un legado."
+    />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="LEGADO MATERO · No vendemos mates. Compartimos un legado."
+    />
+    <meta
+      name="twitter:description"
+      content="Mates, termos y bombillas con identidad argentina. Un legado que se comparte generación tras generación."
+    />
+    <meta
+      name="twitter:image"
+      content="https://legado-matero.vercel.app/og-image.png"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
