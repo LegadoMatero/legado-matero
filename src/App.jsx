@@ -207,6 +207,34 @@ async function loadAboutPoints() {
   return DEFAULT_ABOUT_POINTS
 }
 
+async function loadCategories() {
+  try {
+    const savedCategories = await loadDocument(
+      CMS_KEYS.CATEGORIES,
+    )
+
+    if (Array.isArray(savedCategories)) {
+      return savedCategories
+    }
+  } catch (error) {
+    console.error(
+      'No se pudieron cargar las categorías.',
+      error,
+    )
+  }
+
+  const localCategories = readLocalFallback(
+    'legado-matero-categories',
+    null,
+  )
+
+  if (Array.isArray(localCategories)) {
+    return localCategories
+  }
+
+  return []
+}
+
 function normalizeImages(images) {
   if (!Array.isArray(images)) {
     return []
@@ -1660,6 +1688,20 @@ function PublicSite() {
       DEFAULT_SITE_CONTENT,
     )
 
+  const [categories, setCategories] =
+    useState([])
+
+  const [openCategory, setOpenCategory] =
+    useState(null)
+
+  const [isMobile, setIsMobile] =
+    useState(() =>
+      typeof window !== 'undefined' &&
+      window.matchMedia(
+        '(max-width: 800px)',
+      ).matches,
+    )
+
   const [selectedItem, setSelectedItem] =
     useState(null)
 
@@ -1670,6 +1712,30 @@ function PublicSite() {
     useState(false)
 
   const detailHistoryRef = useRef(false)
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(
+      '(max-width: 800px)',
+    )
+
+    const handleChange = (event) => {
+      setIsMobile(event.matches)
+    }
+
+    setIsMobile(mediaQuery.matches)
+
+    mediaQuery.addEventListener(
+      'change',
+      handleChange,
+    )
+
+    return () => {
+      mediaQuery.removeEventListener(
+        'change',
+        handleChange,
+      )
+    }
+  }, [])
 
   const loadRequestRef = useRef(0)
 
@@ -1882,10 +1948,12 @@ function PublicSite() {
         loadedSiteContent,
         loadedServices,
         loadedAboutPoints,
+        loadedCategories,
       ] = await Promise.all([
         loadSiteContent(),
         loadServices(),
         loadAboutPoints(),
+        loadCategories(),
       ])
 
       if (
@@ -1913,6 +1981,14 @@ function PublicSite() {
         )
           ? loadedAboutPoints
           : DEFAULT_ABOUT_POINTS,
+      )
+
+      setCategories(
+        Array.isArray(
+          loadedCategories,
+        )
+          ? loadedCategories
+          : [],
       )
     } catch (error) {
       console.error(
@@ -2089,6 +2165,174 @@ function PublicSite() {
         ? 'hidden'
         : ''
   }
+
+  const normalizeCategoryName = (value) =>
+    String(value || '')
+      .trim()
+      .toLowerCase()
+
+  const categoryGroups = (() => {
+    const groups = categories
+      .map((category) => ({
+        id: `category-${category.id}`,
+        name: category.name || '',
+        description:
+          category.description || '',
+        image: category.image || '',
+        items: catalog.filter(
+          (item) =>
+            normalizeCategoryName(
+              item.category,
+            ) ===
+            normalizeCategoryName(
+              category.name,
+            ),
+        ),
+      }))
+
+    const usedIds = new Set(
+      groups.flatMap((group) =>
+        group.items.map((item) => item.id),
+      ),
+    )
+
+    const otherItems = catalog.filter(
+      (item) => !usedIds.has(item.id),
+    )
+
+    if (
+      groups.length > 0 &&
+      otherItems.length > 0
+    ) {
+      groups.push({
+        id: 'category-otros',
+        name: 'Otros',
+        description: '',
+        image: '',
+        items: otherItems,
+      })
+    }
+
+    return groups
+  })()
+
+  const openGroup =
+    categoryGroups.find(
+      (group) => group.id === openCategory,
+    ) || null
+
+  const toggleCategory = (groupId) => {
+    setOpenCategory((current) =>
+      current === groupId ? null : groupId,
+    )
+  }
+
+  const renderCatalogCard = (item) => (
+                <article
+                  className="catalog-card"
+                  key={item.id}
+                  onClick={() =>
+                    openDetail(
+                      item,
+                      'catalog',
+                    )
+                  }
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(
+                    event,
+                  ) => {
+                    if (
+                      event.key ===
+                        'Enter' ||
+                      event.key ===
+                        ' '
+                    ) {
+                      openDetail(
+                        item,
+                        'catalog',
+                      )
+                    }
+                  }}
+                  style={{
+                    cursor:
+                      'pointer',
+                  }}
+                >
+                  <div className="catalog-image">
+                    <span>
+                      {
+                        item.number
+                      }
+                    </span>
+
+                    {item.coverImage ? (
+                      <img
+                        src={
+                          item.coverImage
+                        }
+                        alt={
+                          item.title
+                        }
+                        style={{
+                          width:
+                            '100%',
+                          height:
+                            '100%',
+                          objectFit:
+                            'cover',
+                          display:
+                            'block',
+                        }}
+                      />
+                    ) : (
+                      <div className="catalog-placeholder">
+                        <div className="catalog-shape"></div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="catalog-info">
+                    <div className="catalog-top">
+                      <p className="catalog-category">
+                        {
+                          item.category
+                        }
+                      </p>
+
+                      <span className="catalog-arrow">
+                        ↗
+                      </span>
+                    </div>
+
+                    <h3>
+                      {
+                        item.title
+                      }
+                    </h3>
+
+                    <p className="catalog-description">
+                      {
+                        item.description
+                      }
+                    </p>
+
+                    <div className="catalog-bottom">
+                      <strong>
+                        {item.price ||
+                          '$ Consultar'}
+                      </strong>
+
+                      <span>
+                        Ver ficha
+                        <span>
+                          ↗
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                </article>
+  )
 
   return (
     <main className="site">
@@ -2409,115 +2653,109 @@ function PublicSite() {
               servicios.
             </p>
           </div>
-        ) : (
+        ) : categoryGroups.length === 0 ? (
           <div className="catalog-grid">
-            {catalog.map(
-              (item) => (
-                <article
-                  className="catalog-card"
-                  key={item.id}
-                  onClick={() =>
-                    openDetail(
-                      item,
-                      'catalog',
-                    )
-                  }
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(
-                    event,
-                  ) => {
-                    if (
-                      event.key ===
-                        'Enter' ||
-                      event.key ===
-                        ' '
-                    ) {
-                      openDetail(
-                        item,
-                        'catalog',
-                      )
-                    }
-                  }}
-                  style={{
-                    cursor:
-                      'pointer',
-                  }}
-                >
-                  <div className="catalog-image">
-                    <span>
-                      {
-                        item.number
-                      }
-                    </span>
+            {catalog.map(renderCatalogCard)}
+          </div>
+        ) : (
+          <div className="category-accordion">
+            <div className="category-tabs">
+              {categoryGroups.map((group) => {
+                const isOpen =
+                  openCategory === group.id
 
-                    {item.coverImage ? (
-                      <img
-                        src={
-                          item.coverImage
-                        }
-                        alt={
-                          item.title
-                        }
-                        style={{
-                          width:
-                            '100%',
-                          height:
-                            '100%',
-                          objectFit:
-                            'cover',
-                          display:
-                            'block',
-                        }}
-                      />
-                    ) : (
-                      <div className="catalog-placeholder">
-                        <div className="catalog-shape"></div>
+                return (
+                  <div
+                    className="category-slot"
+                    key={group.id}
+                  >
+                    <button
+                      type="button"
+                      className={`category-tile${isOpen ? ' is-open' : ''}`}
+                      onClick={() =>
+                        toggleCategory(group.id)
+                      }
+                      aria-expanded={isOpen}
+                    >
+                      <span className="category-tile-image">
+                        {group.image ? (
+                          <img
+                            src={group.image}
+                            alt=""
+                          />
+                        ) : (
+                          <span className="catalog-placeholder">
+                            <span className="catalog-shape"></span>
+                          </span>
+                        )}
+                      </span>
+
+                      <span className="category-tile-info">
+                        <span className="category-tile-text">
+                          <strong>
+                            {group.name}
+                          </strong>
+
+                          {group.description && (
+                            <small>
+                              {group.description}
+                            </small>
+                          )}
+                        </span>
+
+                        <span
+                          className="category-tile-toggle"
+                          aria-hidden="true"
+                        >
+                          +
+                        </span>
+                      </span>
+                    </button>
+
+                    {isMobile && isOpen && (
+                      <div
+                        className="category-panel"
+                        role="region"
+                        aria-label={group.name}
+                      >
+                        {group.items.length === 0 ? (
+                          <p className="category-empty">
+                            Próximamente vas a encontrar
+                            productos en esta categoría.
+                          </p>
+                        ) : (
+                          <div className="catalog-grid">
+                            {group.items.map(
+                              renderCatalogCard,
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
+                )
+              })}
+            </div>
 
-                  <div className="catalog-info">
-                    <div className="catalog-top">
-                      <p className="catalog-category">
-                        {
-                          item.category
-                        }
-                      </p>
-
-                      <span className="catalog-arrow">
-                        ↗
-                      </span>
-                    </div>
-
-                    <h3>
-                      {
-                        item.title
-                      }
-                    </h3>
-
-                    <p className="catalog-description">
-                      {
-                        item.description
-                      }
-                    </p>
-
-                    <div className="catalog-bottom">
-                      <strong>
-                        {item.price ||
-                          '$ Consultar'}
-                      </strong>
-
-                      <span>
-                        Ver ficha
-                        <span>
-                          ↗
-                        </span>
-                      </span>
-                    </div>
+            {!isMobile && openGroup && (
+              <div
+                className="category-panel"
+                role="region"
+                aria-label={openGroup.name}
+              >
+                {openGroup.items.length === 0 ? (
+                  <p className="category-empty">
+                    Próximamente vas a encontrar
+                    productos en esta categoría.
+                  </p>
+                ) : (
+                  <div className="catalog-grid">
+                    {openGroup.items.map(
+                      renderCatalogCard,
+                    )}
                   </div>
-                </article>
-              ),
+                )}
+              </div>
             )}
           </div>
         )}

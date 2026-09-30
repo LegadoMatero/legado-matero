@@ -968,6 +968,50 @@ function Admin() {
       reader.readAsDataURL(file)
     })
 
+  const handleCategoryImage = async (
+    id,
+    event,
+  ) => {
+    const file = event.target.files?.[0]
+
+    if (!file) {
+      return
+    }
+
+    try {
+      const optimized =
+        await optimizeImage(
+          file,
+          900,
+          0.75,
+        )
+
+      const url = isDataUrl(optimized)
+        ? await uploadDataUrl(
+            `categories/${id}`,
+            optimized,
+          )
+        : optimized
+
+      updateCategory(
+        id,
+        'image',
+        url,
+      )
+    } catch (error) {
+      console.error(
+        'No se pudo procesar la imagen de la categoría:',
+        error,
+      )
+
+      alert(
+        'No se pudo procesar la imagen. Usá JPG, JPEG, PNG o WebP.',
+      )
+    }
+
+    event.target.value = ''
+  }
+
   const handlePublicationImages = async (
     id,
     event,
@@ -2543,6 +2587,79 @@ function Admin() {
                               ),
                             true,
                           )}
+
+                          <div className="admin-field-full">
+
+                            <label className="admin-field">
+                              <span>
+                                Imagen de la categoría
+                              </span>
+
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/jpg,image/png,image/webp"
+                                onChange={(event) =>
+                                  handleCategoryImage(
+                                    category.id,
+                                    event,
+                                  )
+                                }
+                              />
+                            </label>
+
+                            <p
+                              style={{
+                                marginTop: '8px',
+                                fontSize: '13px',
+                              }}
+                            >
+                              JPG, JPEG, PNG o WebP. La imagen se
+                              optimiza automáticamente. Después
+                              tocá "Guardar categorías" para
+                              publicarla en la página.
+                            </p>
+
+                            {category.image && (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'flex-end',
+                                  flexWrap: 'wrap',
+                                  gap: '14px',
+                                  marginTop: '14px',
+                                }}
+                              >
+                                <img
+                                  src={category.image}
+                                  alt={category.name}
+                                  style={{
+                                    display: 'block',
+                                    width: '180px',
+                                    height: '110px',
+                                    objectFit: 'cover',
+                                    border:
+                                      '1px solid rgba(245,245,242,0.12)',
+                                    background: '#0D0D0D',
+                                  }}
+                                />
+
+                                <button
+                                  type="button"
+                                  className="admin-delete-button"
+                                  onClick={() =>
+                                    updateCategory(
+                                      category.id,
+                                      'image',
+                                      '',
+                                    )
+                                  }
+                                >
+                                  Quitar imagen
+                                </button>
+                              </div>
+                            )}
+
+                          </div>
 
                         </div>
 
