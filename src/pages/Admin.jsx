@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
+import defaultHeroMain from '../assets/banner-contacto.jpg'
+import defaultHeroDetail from '../assets/banner-productos.jpg'
 import {
   CMS_KEYS,
   formatCmsError,
@@ -13,9 +15,11 @@ import {
 } from '../cms'
 import './Admin.css'
 
+const cleanSectionLabel = (value) => String(value || '').replace(/^\s*\d{1,2}\s*[\/\-–—]\s*/, '')
+
 function Admin() {
   const [checkingSession, setCheckingSession] = useState(true)
-  const [activeSection, setActiveSection] = useState('dashboard')
+  const [activeSection, setActiveSection] = useState('inicio')
 
   useEffect(() => {
     const checkSession = async () => {
@@ -41,10 +45,14 @@ function Admin() {
       description:
       'Cada mate tiene una historia. Nosotros queremos ayudarte a seguir compartiéndola.',
       button: 'Conocé nuestros mates',
+      whatsappButton: 'Consultar por WhatsApp',
+      heroMainImage: '',
+      heroDetailImage: '',
     },
 
     services: {
       eyebrow: '01 / PRODUCTOS',
+      featuredProductIds: null,
       title: 'Mates y accesorios con historia.',
       description:
       'Seleccionamos y cuidamos cada mate, termo y bombilla para que sigan acompañando charlas, familias y amistades.',
@@ -76,6 +84,7 @@ function Admin() {
       instagram: '',
       fiverr: '',
       email: 'contacto@legadomatero.com.ar',
+      bannerImage: '',
     },
   }
 
@@ -478,6 +487,8 @@ function Admin() {
   })
 
   const [saving, setSaving] = useState(false)
+  const [processingHeroImage, setProcessingHeroImage] = useState('')
+  const [processingAboutImage, setProcessingAboutImage] = useState(null)
 
   useEffect(() => {
     if (checkingSession) {
@@ -539,56 +550,22 @@ function Admin() {
   }, [checkingSession])
 
   const menuItems = [
-    {
-      id: 'dashboard',
-      label: 'Dashboard',
-      icon: '⌂',
-    },
-    {
-      id: 'configuracion',
-      label: 'Configuración',
-      icon: '◈',
-    },
-    {
-      id: 'categorias',
-      label: 'Categorías',
-      icon: '▦',
-    },
-    {
-      id: 'publicaciones',
-      label: 'Publicaciones',
-      icon: '□',
-    },
+    { id: 'inicio', label: 'Inicio', icon: '⌂' },
+    { id: 'legado', label: 'Nuestro legado', icon: '✳' },
+    { id: 'productos', label: 'Productos', icon: '◈' },
+    { id: 'catalogo', label: 'Catálogo', icon: '▦' },
+    { id: 'contacto', label: 'Contacto', icon: '↗' },
   ]
 
   const sectionTitles = {
-    dashboard: {
-      eyebrow: 'PANEL PRINCIPAL',
-      title: 'Dashboard',
-      description:
-        'Administrá y controlá el contenido de LEGADO MATERO.',
-    },
-    configuracion: {
-      eyebrow: 'CONTENIDO DEL SITIO',
-      title: 'Configuración',
-      description:
-        'Editá las diferentes secciones del sitio público.',
-    },
-    categorias: {
-      eyebrow: 'CATÁLOGO',
-      title: 'Categorías',
-      description:
-        'Creá y administrá las categorías de tus publicaciones.',
-    },
-    publicaciones: {
-      eyebrow: 'CATÁLOGO',
-      title: 'Publicaciones',
-      description:
-        'Gestioná productos y servicios del catálogo.',
-    },
+    inicio: { eyebrow: 'EDITAR PORTADA', title: 'Inicio', description: 'Mensaje principal, botones y fotografías del Hero.' },
+    legado: { eyebrow: 'CONTAR LA HISTORIA', title: 'Nuestro legado', description: 'Editá los capítulos, sus imágenes y el mensaje que une historia y productos.' },
+    productos: { eyebrow: 'RECORRIDO COMERCIAL', title: 'Productos', description: 'Textos de la colección, categorías narrativas y productos destacados.' },
+    catalogo: { eyebrow: 'ORGANIZAR PRODUCTOS', title: 'Catálogo', description: 'Editá la presentación, las categorías y las fichas desplegables.' },
+    contacto: { eyebrow: 'ÚLTIMA SECCIÓN', title: 'Contacto', description: 'Imagen final, mensaje y canales de contacto.' },
   }
 
-  const currentSection = sectionTitles[activeSection]
+  const currentSection = sectionTitles[activeSection] || sectionTitles.inicio
 
   const updateContent = (
     section,
@@ -608,20 +585,50 @@ function Admin() {
     try {
       setSaving(true)
 
-      await saveDocument(CMS_KEYS.SITE_CONTENT, siteContent)
-      await saveDocument(CMS_KEYS.SERVICES, services)
-      await saveDocument(CMS_KEYS.ABOUT_POINTS, aboutPoints)
+      // Primero subir todas las nuevas imágenes; recién después escribir documentos.
+      // Utilizamos 'home/', la misma carpeta cuya política Storage ya funciona
+      // para el Hero. Así no se necesitan nuevas políticas SQL.
+      const savedHome = { ...siteContent.home }
+      for (const field of ['heroMainImage', 'heroDetailImage']) {
+        if (isDataUrl(savedHome[field])) {
+          savedHome[field] = await uploadDataUrl(`home/${field}`, savedHome[field])
+        }
+      }
 
+      const savedContact = { ...siteContent.contact }
+      if (isDataUrl(savedContact.bannerImage)) {
+        savedContact.bannerImage = await uploadDataUrl(
+          'home/contact-banner', savedContact.bannerImage,
+        )
+      }
+
+      const savedAboutPoints = []
+      for (const point of aboutPoints) {
+        const nextPoint = { ...point }
+        if (isDataUrl(nextPoint.image)) {
+          nextPoint.image = await uploadDataUrl(
+            `home/legado-${String(point.id).replace(/[^a-zA-Z0-9_-]/g, '') || 'capitulo'}`,
+            nextPoint.image,
+          )
+        }
+        savedAboutPoints.push(nextPoint)
+      }
+
+      const savedSiteContent = {
+        ...siteContent,
+        home: savedHome,
+        contact: savedContact,
+      }
+
+      await saveDocument(CMS_KEYS.SITE_CONTENT, savedSiteContent)
+      await saveDocument(CMS_KEYS.SERVICES, services)
+      await saveDocument(CMS_KEYS.ABOUT_POINTS, savedAboutPoints)
+      setSiteContent(savedSiteContent)
+      setAboutPoints(savedAboutPoints)
       alert('Cambios guardados en Supabase.')
     } catch (error) {
-      console.error(
-        'No se pudo guardar la configuración:',
-        error,
-      )
-
-      alert(
-        `No se pudieron guardar los cambios. ${formatCmsError(error)}`,
-      )
+      console.error('No se pudo guardar la configuración:', error)
+      alert(`No se pudieron guardar los cambios. ${formatCmsError(error)}`)
     } finally {
       setSaving(false)
     }
@@ -643,6 +650,23 @@ function Admin() {
       alert(
         `No se pudieron guardar las categorías. ${formatCmsError(error)}`,
       )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveCatalogInventory = async () => {
+    try {
+      setSaving(true)
+      // Persistimos las fotografías antes de escribir los dos documentos existentes.
+      const nextPublications = await persistPublicationImages(publications)
+      await saveDocument(CMS_KEYS.PUBLICATIONS, nextPublications)
+      await saveDocument(CMS_KEYS.CATEGORIES, categories)
+      setPublications(nextPublications)
+      alert('Categorías y productos guardados en Supabase.')
+    } catch (error) {
+      console.error('No se pudo guardar el catálogo:', error)
+      alert(`No se pudo completar el guardado del catálogo. ${formatCmsError(error)}`)
     } finally {
       setSaving(false)
     }
@@ -729,7 +753,9 @@ function Admin() {
         {
           id: Date.now(),
           number: nextNumber,
-          title: 'NUEVO PUNTO',
+          title: 'NUEVO CAPÍTULO',
+          image: '',
+          imageAlt: '',
           description:
             'Descripción del nuevo punto.',
         },
@@ -766,21 +792,22 @@ function Admin() {
     ])
   }
 
-  const updateCategory = (
-    id,
-    field,
-    value,
-  ) => {
-    setCategories((current) =>
-      current.map((category) =>
-        category.id === id
-          ? {
-              ...category,
-              [field]: value,
-            }
-          : category,
-      ),
-    )
+  const updateCategory = (id, field, value) => {
+    // El catálogo original vincula productos con el NOMBRE de la categoría.
+    // Renombrarla también debe actualizar esa referencia antes de guardar.
+    if (field === 'name') {
+      const previousName = categories.find((category) => category.id === id)?.name
+      if (previousName !== undefined && previousName !== value) {
+        setPublications((current) => current.map((publication) => (
+          publication.category === previousName
+            ? { ...publication, category: value }
+            : publication
+        )))
+      }
+    }
+    setCategories((current) => current.map((category) => (
+      category.id === id ? { ...category, [field]: value } : category
+    )))
   }
 
   const deleteCategory = (id) => {
@@ -813,7 +840,7 @@ function Admin() {
         {
           id: Date.now(),
           order: highestOrder + 1,
-          type: 'Servicio',
+          type: 'Producto',
           title: 'Nueva publicación',
           category:
             categories[0]?.name || '',
@@ -936,11 +963,14 @@ function Admin() {
             height,
           )
 
-          const result =
-            canvas.toDataURL(
-              'image/jpeg',
-              quality,
-            )
+          // PNG y WebP conservan su canal alfa. JPEG se mantiene para fotos JPG.
+          const outputType = file.type === 'image/png'
+            ? 'image/png'
+            : file.type === 'image/webp'
+              ? 'image/webp'
+              : 'image/jpeg'
+
+          const result = canvas.toDataURL(outputType, quality)
 
           resolve(result)
         }
@@ -967,6 +997,75 @@ function Admin() {
 
       reader.readAsDataURL(file)
     })
+
+  const handleHomeImage = async (field, event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 12 * 1024 * 1024) {
+      alert('La imagen debe pesar menos de 12 MB.')
+      event.target.value = ''
+      return
+    }
+
+    try {
+      setProcessingHeroImage(field)
+      const image = await optimizeImage(
+        file,
+        field === 'heroMainImage' ? 1920 : 1200,
+        0.84,
+      )
+      updateContent('home', field, image)
+    } catch (error) {
+      console.error('Error al preparar la foto de inicio:', error)
+      alert('No se pudo procesar la imagen. Usá JPG, PNG o WebP.')
+    } finally {
+      setProcessingHeroImage('')
+      event.target.value = ''
+    }
+  }
+
+  const handleAboutPointImage = async (id, event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (file.size > 12 * 1024 * 1024) {
+      alert('La imagen debe pesar menos de 12 MB.')
+      event.target.value = ''
+      return
+    }
+    try {
+      setProcessingAboutImage(id)
+      const optimized = await optimizeImage(file, 1400, 0.84)
+      updateAboutPoint(id, 'image', optimized)
+    } catch (error) {
+      console.error('No se pudo preparar la fotografía del capítulo:', error)
+      alert('No se pudo procesar la imagen. Usá JPG, PNG o WebP.')
+    } finally {
+      setProcessingAboutImage(null)
+      event.target.value = ''
+    }
+  }
+
+  const handleContactBanner = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (file.size > 12 * 1024 * 1024) {
+      alert('La imagen debe pesar menos de 12 MB.')
+      event.target.value = ''
+      return
+    }
+    try {
+      setProcessingHeroImage('contactBannerImage')
+      const optimized = await optimizeImage(file, 1800, 0.84)
+      updateContent('contact', 'bannerImage', optimized)
+    } catch (error) {
+      console.error('No se pudo preparar la fotografía de contacto:', error)
+      alert('No se pudo procesar la imagen. Usá JPG, PNG o WebP.')
+    } finally {
+      setProcessingHeroImage('')
+      event.target.value = ''
+    }
+  }
 
   const handleCategoryImage = async (
     id,
@@ -1550,6 +1649,29 @@ function Admin() {
     }
   }
 
+  const eligibleFeaturedProducts = publications
+    .filter((publication) => publication.published && (
+      publication.coverImage || publication.images?.[0]?.url || publication.image
+    ))
+    .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+
+  // Al abrir un proyecto sin destacados guardados, los tres primeros
+  // siguen mostrándose hasta que el cliente elija su selección.
+  const featuredProductIds = Array.isArray(siteContent.services.featuredProductIds)
+    ? siteContent.services.featuredProductIds.map(String)
+    : eligibleFeaturedProducts.slice(0, 3).map((item) => String(item.id))
+
+  const changeFeaturedProduct = (slot, selectedId) => {
+    const next = [0, 1, 2].map((index) => featuredProductIds[index] || '')
+    next[slot] = selectedId
+    if (selectedId) {
+      next.forEach((id, index) => {
+        if (index !== slot && id === selectedId) next[index] = ''
+      })
+    }
+    updateContent('services', 'featuredProductIds', next.filter(Boolean))
+  }
+
   const renderField = (
     label,
     value,
@@ -1581,1191 +1703,27 @@ function Admin() {
     </label>
   )
 
-  if (checkingSession) {
-    return null
-  }
-
-  return (
-    <main className="admin-layout">
-
-      <aside className="admin-sidebar">
-
-        <div className="admin-brand">
-          <div className="admin-brand-mark">
-            <span></span>
-            <span></span>
-          </div>
-
-          <div>
-            <strong>LEGADO MATERO</strong>
-            <small>ADMIN</small>
-          </div>
-        </div>
-
-        <div className="admin-sidebar-label">
-          ADMINISTRACIÓN
-        </div>
-
-        <nav className="admin-menu">
-
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              className={`admin-menu-item ${
-                activeSection ===
-                item.id
-                  ? 'active'
-                  : ''
-              }`}
-              onClick={() =>
-                setActiveSection(
-                  item.id,
-                )
-              }
-            >
-              <span className="admin-menu-icon">
-                {item.icon}
-              </span>
-
-              <span>
-                {item.label}
-              </span>
-
-              {activeSection ===
-                item.id && (
-                <span className="admin-menu-active"></span>
-              )}
-            </button>
-          ))}
-
-        </nav>
-
-        <div className="admin-sidebar-bottom">
-
-          <a
-            href="/"
-            className="admin-sidebar-link"
-          >
-            <span>↗</span>
-            Ver sitio
-          </a>
-
-          <button
-            type="button"
-            className="admin-sidebar-link admin-logout"
-            onClick={async () => {
-              await supabase.auth.signOut()
-              window.location.href = '/admin'
-            }}
-          >
-            <span>←</span>
-            Cerrar sesión
-          </button>
-
-        </div>
-
-      </aside>
-
-      <section className="admin-main">
-
-        <header className="admin-topbar">
-
-          <div className="admin-topbar-left">
-            <span className="admin-status-dot"></span>
-            <span>
-              SISTEMA LOCAL
-            </span>
-          </div>
-
-          <div className="admin-topbar-right">
-
-            <span>LEGADO MATERO</span>
-
-            <div className="admin-user">
-
-              <div className="admin-user-avatar">
-                PL
-              </div>
-
-              <div>
-                <strong>
-                  Administrador
-                </strong>
-
-                <small>
-                  Cuenta principal
-                </small>
-              </div>
-
-            </div>
-
-          </div>
-
-        </header>
-
-        <div className="admin-content">
-
-          <div className="admin-page-header">
-
-            <div>
-
-              <span className="admin-eyebrow">
-                {
-                  currentSection.eyebrow
-                }
-              </span>
-
-              <h1>
-                {
-                  currentSection.title
-                }
-              </h1>
-
-              <p>
-                {
-                  currentSection.description
-                }
-              </p>
-
-            </div>
-
-            <div className="admin-header-decoration">
-              <span></span>
-              <span></span>
-            </div>
-
-          </div>
-
-          {activeSection ===
-            'dashboard' && (
-            <div className="admin-dashboard">
-
-              <div className="admin-stat-grid">
-
-                <article className="admin-stat-card">
-                  <div className="admin-stat-top">
-                    <span>
-                      PUBLICACIONES
-                    </span>
-
-                    <strong>01</strong>
-                  </div>
-
-                  <div className="admin-stat-number">
-                    {
-                      publications.length
-                    }
-                  </div>
-
-                  <p>
-                    Productos y servicios
-                  </p>
-                </article>
-
-                <article className="admin-stat-card">
-                  <div className="admin-stat-top">
-                    <span>
-                      CATEGORÍAS
-                    </span>
-
-                    <strong>02</strong>
-                  </div>
-
-                  <div className="admin-stat-number">
-                    {
-                      categories.length
-                    }
-                  </div>
-
-                  <p>
-                    Categorías creadas
-                  </p>
-                </article>
-
-                <article className="admin-stat-card admin-stat-accent">
-                  <div className="admin-stat-top">
-                    <span>
-                      SITIO
-                    </span>
-
-                    <strong>04</strong>
-                  </div>
-
-                  <div className="admin-stat-status">
-                    <span></span>
-                    ACTIVO
-                  </div>
-
-                  <p>
-                    Sitio funcionando correctamente
-                  </p>
-                </article>
-
-              </div>
-
-              <div className="admin-dashboard-grid">
-
-                <section className="admin-panel">
-
-                  <div className="admin-panel-header">
-                    <div>
-                      <span>
-                        ACCESOS RÁPIDOS
+  // Único editor de ficha reutilizado en todas las categorías.
+  // Conserva imágenes múltiples, portada, orden, precio y estado existentes.
+  const renderProductAccordion = (publication, index) => (
+                  <details className="admin-accordion-product" key={publication.id}>
+                    <summary className="admin-product-summary">
+                      <span className="admin-product-thumb">
+                        {publication.coverImage ? (
+                          <img src={publication.coverImage} alt="" loading="lazy" />
+                        ) : (<span aria-hidden="true">✳</span>)}
                       </span>
-
-                      <h2>
-                        Gestionar contenido
-                      </h2>
-                    </div>
-                  </div>
-
-                  <div className="admin-quick-grid">
-
-                    <button
-                      onClick={() =>
-                        setActiveSection(
-                          'configuracion',
-                        )
-                      }
-                    >
-                      <span>◈</span>
-
-                      <strong>
-                        Configuración
-                      </strong>
-
-                      <small>
-                        Editar contenido del sitio
-                      </small>
-
-                      <b>↗</b>
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        setActiveSection(
-                          'publicaciones',
-                        )
-                      }
-                    >
-                      <span>□</span>
-
-                      <strong>
-                        Publicaciones
-                      </strong>
-
-                      <small>
-                        Productos y servicios
-                      </small>
-
-                      <b>↗</b>
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        setActiveSection(
-                          'categorias',
-                        )
-                      }
-                    >
-                      <span>▦</span>
-
-                      <strong>
-                        Categorías
-                      </strong>
-
-                      <small>
-                        Organizar catálogo
-                      </small>
-
-                      <b>↗</b>
-                    </button>
-
-                  </div>
-
-                </section>
-
-                <section className="admin-panel admin-system-panel">
-
-                  <div className="admin-panel-header">
-                    <div>
-                      <span>
-                        ESTADO
+                      <span className="admin-product-main">
+                        <strong>{publication.title || 'Producto sin título'}</strong>
+                        <small>{publication.type || 'Producto'} · {publication.category || 'Sin categoría'}</small>
                       </span>
-
-                      <h2>
-                        Sistema
-                      </h2>
-                    </div>
-                  </div>
-
-                  <div className="admin-system-list">
-
-                    <div>
-                      <span>
-                        <i></i>
-                        Sitio público
+                      <span className={`admin-product-state ${publication.published ? 'is-public' : ''}`}>
+                        {publication.published ? 'Publicado' : 'Oculto'}
                       </span>
-
-                      <strong>
-                        ACTIVO
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>
-                        <i></i>
-                        Administrador
-                      </span>
-
-                      <strong>
-                        LOCAL
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>
-                        <i></i>
-                        Base de datos
-                      </span>
-
-                      <strong>
-                        PENDIENTE
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>
-                        <i></i>
-                        Storage
-                      </span>
-
-                      <strong>
-                        PENDIENTE
-                      </strong>
-                    </div>
-
-                  </div>
-
-                  <div className="admin-system-note">
-                    La conexión con Supabase se configurará
-                    en la siguiente etapa.
-                  </div>
-
-                </section>
-
-              </div>
-
-            </div>
-          )}
-
-          {activeSection ===
-            'configuracion' && (
-            <div className="admin-settings">
-
-              <section className="admin-editor-card">
-
-                <div className="admin-editor-header">
-
-                  <div>
-                    <span>
-                      01 / INICIO
-                    </span>
-
-                    <h2>
-                      Página principal
-                    </h2>
-                  </div>
-
-                  <span className="admin-editor-number">
-                    01
-                  </span>
-
-                </div>
-
-                <div className="admin-form-grid">
-
-                  {renderField(
-                    'Etiqueta superior',
-                    siteContent.home.eyebrow,
-                    (value) =>
-                      updateContent(
-                        'home',
-                        'eyebrow',
-                        value,
-                      ),
-                  )}
-
-                  {renderField(
-                    'Título principal',
-                    siteContent.home.title,
-                    (value) =>
-                      updateContent(
-                        'home',
-                        'title',
-                        value,
-                      ),
-                  )}
-
-                  <div className="admin-field-full">
-                    {renderField(
-                      'Descripción',
-                      siteContent.home
-                        .description,
-                      (value) =>
-                        updateContent(
-                          'home',
-                          'description',
-                          value,
-                        ),
-                      true,
-                    )}
-                  </div>
-
-                  {renderField(
-                    'Texto del botón',
-                    siteContent.home.button,
-                    (value) =>
-                      updateContent(
-                        'home',
-                        'button',
-                        value,
-                      ),
-                  )}
-
-                </div>
-
-              </section>
-
-              <section className="admin-editor-card">
-
-                <div className="admin-editor-header">
-
-                  <div>
-                    <span>
-                      02 / SERVICIOS
-                    </span>
-
-                    <h2>
-                      Sección de servicios
-                    </h2>
-                  </div>
-
-                  <button
-                    className="admin-add-button"
-                    onClick={addService}
-                  >
-                    + Agregar servicio
-                  </button>
-
-                </div>
-
-                <div className="admin-form-grid">
-
-                  {renderField(
-                    'Etiqueta',
-                    siteContent.services
-                      .eyebrow,
-                    (value) =>
-                      updateContent(
-                        'services',
-                        'eyebrow',
-                        value,
-                      ),
-                  )}
-
-                  {renderField(
-                    'Título',
-                    siteContent.services
-                      .title,
-                    (value) =>
-                      updateContent(
-                        'services',
-                        'title',
-                        value,
-                      ),
-                  )}
-
-                  <div className="admin-field-full">
-                    {renderField(
-                      'Descripción general',
-                      siteContent.services
-                        .description,
-                      (value) =>
-                        updateContent(
-                          'services',
-                          'description',
-                          value,
-                        ),
-                      true,
-                    )}
-                  </div>
-
-                </div>
-
-                <div className="admin-items-list">
-
-                  {services.map(
-                    (service) => (
-                      <article
-                        className="admin-item-card"
-                        key={service.id}
-                      >
-
-                        <div className="admin-item-number">
-                          {
-                            service.number
-                          }
-                        </div>
-
-                        <div className="admin-item-fields">
-
-                          {renderField(
-                            'Título',
-                            service.title,
-                            (value) =>
-                              updateService(
-                                service.id,
-                                'title',
-                                value,
-                              ),
-                          )}
-
-                          {renderField(
-                            'Descripción',
-                            service.description,
-                            (value) =>
-                              updateService(
-                                service.id,
-                                'description',
-                                value,
-                              ),
-                            true,
-                          )}
-
-                        </div>
-
-                        <button
-                          className="admin-delete-button"
-                          onClick={() =>
-                            deleteService(
-                              service.id,
-                            )
-                          }
-                        >
-                          Eliminar
-                        </button>
-
-                      </article>
-                    ),
-                  )}
-
-                </div>
-
-              </section>
-
-              <section className="admin-editor-card">
-
-                <div className="admin-editor-header">
-
-                  <div>
-                    <span>
-                      03 / NOSOTROS
-                    </span>
-
-                    <h2>
-                      Información de la empresa
-                    </h2>
-                  </div>
-
-                  <button
-                    className="admin-add-button"
-                    onClick={
-                      addAboutPoint
-                    }
-                  >
-                    + Agregar punto
-                  </button>
-
-                </div>
-
-                <div className="admin-form-grid">
-
-                  {renderField(
-                    'Etiqueta',
-                    siteContent.about
-                      .eyebrow,
-                    (value) =>
-                      updateContent(
-                        'about',
-                        'eyebrow',
-                        value,
-                      ),
-                  )}
-
-                  {renderField(
-                    'Título',
-                    siteContent.about
-                      .title,
-                    (value) =>
-                      updateContent(
-                        'about',
-                        'title',
-                        value,
-                      ),
-                  )}
-
-                  <div className="admin-field-full">
-                    {renderField(
-                      'Texto principal',
-                      siteContent.about
-                        .lead,
-                      (value) =>
-                        updateContent(
-                          'about',
-                          'lead',
-                          value,
-                        ),
-                      true,
-                    )}
-                  </div>
-
-                  <div className="admin-field-full">
-                    {renderField(
-                      'Descripción',
-                      siteContent.about
-                        .description,
-                      (value) =>
-                        updateContent(
-                          'about',
-                          'description',
-                          value,
-                        ),
-                      true,
-                    )}
-                  </div>
-
-                </div>
-
-                <div className="admin-items-list">
-
-                  {aboutPoints.map(
-                    (point) => (
-                      <article
-                        className="admin-item-card"
-                        key={point.id}
-                      >
-
-                        <div className="admin-item-number">
-                          {
-                            point.number
-                          }
-                        </div>
-
-                        <div className="admin-item-fields">
-
-                          {renderField(
-                            'Título',
-                            point.title,
-                            (value) =>
-                              updateAboutPoint(
-                                point.id,
-                                'title',
-                                value,
-                              ),
-                          )}
-
-                          {renderField(
-                            'Descripción',
-                            point.description,
-                            (value) =>
-                              updateAboutPoint(
-                                point.id,
-                                'description',
-                                value,
-                              ),
-                            true,
-                          )}
-
-                        </div>
-
-                        <button
-                          className="admin-delete-button"
-                          onClick={() =>
-                            deleteAboutPoint(
-                              point.id,
-                            )
-                          }
-                        >
-                          Eliminar
-                        </button>
-
-                      </article>
-                    ),
-                  )}
-
-                </div>
-
-              </section>
-
-              <section className="admin-editor-card">
-
-                <div className="admin-editor-header">
-
-                  <div>
-                    <span>
-                      03 / CATÁLOGO
-                    </span>
-
-                    <h2>
-                      Sección de catálogo
-                    </h2>
-                  </div>
-
-                  <span className="admin-editor-number">
-                    03
-                  </span>
-
-                </div>
-
-                <div className="admin-form-grid">
-
-                  {renderField(
-                    'Etiqueta',
-                    siteContent.catalog
-                      .eyebrow,
-                    (value) =>
-                      updateContent(
-                        'catalog',
-                        'eyebrow',
-                        value,
-                      ),
-                  )}
-
-                  {renderField(
-                    'Título',
-                    siteContent.catalog
-                      .title,
-                    (value) =>
-                      updateContent(
-                        'catalog',
-                        'title',
-                        value,
-                      ),
-                  )}
-
-                  <div className="admin-field-full">
-                    {renderField(
-                      'Descripción',
-                      siteContent.catalog
-                        .description,
-                      (value) =>
-                        updateContent(
-                          'catalog',
-                          'description',
-                          value,
-                        ),
-                      true,
-                    )}
-                  </div>
-
-                </div>
-
-              </section>
-
-              <section className="admin-editor-card">
-
-                <div className="admin-editor-header">
-
-                  <div>
-                    <span>
-                      04 / CONTACTO
-                    </span>
-
-                    <h2>
-                      Información de contacto
-                    </h2>
-                  </div>
-
-                </div>
-
-                <div className="admin-form-grid">
-
-                  {renderField(
-                    'Etiqueta',
-                    siteContent.contact
-                      .eyebrow,
-                    (value) =>
-                      updateContent(
-                        'contact',
-                        'eyebrow',
-                        value,
-                      ),
-                  )}
-
-                  {renderField(
-                    'Título',
-                    siteContent.contact
-                      .title,
-                    (value) =>
-                      updateContent(
-                        'contact',
-                        'title',
-                        value,
-                      ),
-                  )}
-
-                  <div className="admin-field-full">
-                    {renderField(
-                      'Descripción',
-                      siteContent.contact
-                        .description,
-                      (value) =>
-                        updateContent(
-                          'contact',
-                          'description',
-                          value,
-                        ),
-                      true,
-                    )}
-                  </div>
-
-                  {renderField(
-                    'WhatsApp',
-                    siteContent.contact
-                      .whatsapp,
-                    (value) =>
-                      updateContent(
-                        'contact',
-                        'whatsapp',
-                        value,
-                      ),
-                  )}
-
-                  {renderField(
-                    'LinkedIn',
-                    siteContent.contact
-                      .linkedin,
-                    (value) =>
-                      updateContent(
-                        'contact',
-                        'linkedin',
-                        value,
-                      ),
-                  )}
-
-                  {renderField(
-                    'Instagram (usuario o link)',
-                    siteContent.contact
-                      .instagram || '',
-                    (value) =>
-                      updateContent(
-                        'contact',
-                        'instagram',
-                        value,
-                      ),
-                  )}
-
-                  {renderField(
-                    'Fiverr (usuario o link)',
-                    siteContent.contact
-                      .fiverr || '',
-                    (value) =>
-                      updateContent(
-                        'contact',
-                        'fiverr',
-                        value,
-                      ),
-                  )}
-
-                </div>
-
-              </section>
-
-              <div className="admin-save-bar">
-                <span>
-                  Los cambios se guardan en Supabase y se ven en el sitio publicado.
-                </span>
-
-                <button
-                  className="admin-save-button"
-                  onClick={saveSiteContent}
-                  disabled={saving}
-                >
-                  {saving
-                    ? 'Guardando...'
-                    : 'Guardar cambios'}
-                  <span>↗</span>
-                </button>
-              </div>
-
-            </div>
-          )}
-
-          {activeSection ===
-            'categorias' && (
-            <div className="admin-settings">
-
-              <section className="admin-editor-card">
-
-                <div className="admin-editor-header">
-
-                  <div>
-                    <span>
-                      01 / CATEGORÍAS
-                    </span>
-
-                    <h2>
-                      Gestionar categorías
-                    </h2>
-                  </div>
-
-                  <button
-                    className="admin-add-button"
-                    onClick={addCategory}
-                  >
-                    + Nueva categoría
-                  </button>
-
-                </div>
-
-                <div className="admin-form-grid">
-
-                  <div className="admin-field-full">
-                    <p>
-                      Creá todas las categorías que necesites.
-                      Más adelante podremos utilizarlas para
-                      clasificar automáticamente productos,
-                      servicios y proyectos.
-                    </p>
-                  </div>
-
-                </div>
-
-                <div className="admin-items-list">
-
-                  {categories.map(
-                    (
-                      category,
-                      index,
-                    ) => (
-                      <article
-                        className="admin-item-card"
-                        key={category.id}
-                      >
-
-                        <div className="admin-item-number">
-                          {String(
-                            index + 1,
-                          ).padStart(
-                            2,
-                            '0',
-                          )}
-                        </div>
-
-                        <div className="admin-item-fields">
-
-                          {renderField(
-                            'Nombre de categoría',
-                            category.name,
-                            (value) =>
-                              updateCategory(
-                                category.id,
-                                'name',
-                                value,
-                              ),
-                          )}
-
-                          {renderField(
-                            'Descripción',
-                            category.description,
-                            (value) =>
-                              updateCategory(
-                                category.id,
-                                'description',
-                                value,
-                              ),
-                            true,
-                          )}
-
-                          <div className="admin-field-full">
-
-                            <label className="admin-field">
-                              <span>
-                                Imagen de la categoría
-                              </span>
-
-                              <input
-                                type="file"
-                                accept="image/jpeg,image/jpg,image/png,image/webp"
-                                onChange={(event) =>
-                                  handleCategoryImage(
-                                    category.id,
-                                    event,
-                                  )
-                                }
-                              />
-                            </label>
-
-                            <p
-                              style={{
-                                marginTop: '8px',
-                                fontSize: '13px',
-                              }}
-                            >
-                              JPG, JPEG, PNG o WebP. La imagen se
-                              optimiza automáticamente. Después
-                              tocá "Guardar categorías" para
-                              publicarla en la página.
-                            </p>
-
-                            {category.image && (
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'flex-end',
-                                  flexWrap: 'wrap',
-                                  gap: '14px',
-                                  marginTop: '14px',
-                                }}
-                              >
-                                <img
-                                  src={category.image}
-                                  alt={category.name}
-                                  style={{
-                                    display: 'block',
-                                    width: '180px',
-                                    height: '110px',
-                                    objectFit: 'cover',
-                                    border:
-                                      '1px solid rgba(245,245,242,0.12)',
-                                    background: '#0D0D0D',
-                                  }}
-                                />
-
-                                <button
-                                  type="button"
-                                  className="admin-delete-button"
-                                  onClick={() =>
-                                    updateCategory(
-                                      category.id,
-                                      'image',
-                                      '',
-                                    )
-                                  }
-                                >
-                                  Quitar imagen
-                                </button>
-                              </div>
-                            )}
-
-                          </div>
-
-                        </div>
-
-                        <button
-                          className="admin-delete-button"
-                          onClick={() =>
-                            deleteCategory(
-                              category.id,
-                            )
-                          }
-                        >
-                          Eliminar
-                        </button>
-
-                      </article>
-                    ),
-                  )}
-
-                </div>
-
-              </section>
-
-              <div className="admin-save-bar">
-                <span>
-                  Las categorías se guardan en Supabase.
-                </span>
-
-                <button
-                  className="admin-save-button"
-                  onClick={saveCategories}
-                  disabled={saving}
-                >
-                  {saving
-                    ? 'Guardando...'
-                    : 'Guardar categorías'}
-                  <span>↗</span>
-                </button>
-              </div>
-
-            </div>
-          )}
-
-          {activeSection ===
-            'publicaciones' && (
-            <div className="admin-settings">
-
-              <section className="admin-editor-card">
-
-                <div className="admin-editor-header">
-
-                  <div>
-                    <span>
-                      01 / PUBLICACIONES
-                    </span>
-
-                    <h2>
-                      Productos y servicios
-                    </h2>
-                  </div>
-
-                  <button
-                    className="admin-add-button"
-                    onClick={
-                      addPublication
-                    }
-                  >
-                    + Nueva publicación
-                  </button>
-
-                </div>
-
-                <div className="admin-form-grid">
-
-                  <div className="admin-field-full">
-                    <p>
-                      Creá fichas comerciales completas para
-                      productos y servicios. Las publicaciones
-                      podrán mostrarse u ocultarse del catálogo.
-                    </p>
-                  </div>
-
-                </div>
-
-                <div className="admin-items-list">
-
-                  {publications.map(
-                    (
-                      publication,
-                      index,
-                    ) => (
-                      <article
-                        className="admin-item-card"
-                        key={
-                          publication.id
-                        }
-                      >
-
-                        <div className="admin-item-number">
-                          {String(
-                            index + 1,
-                          ).padStart(
-                            2,
-                            '0',
-                          )}
-                        </div>
-
+                      <span className="admin-product-price">{publication.price || 'Sin precio'}</span>
+                      <span className="admin-collapse-indicator" aria-hidden="true">⌄</span>
+                    </summary>
+                    <div className="admin-accordion-editor">
                         <div className="admin-item-fields">
 
                           <div className="admin-form-grid">
@@ -3210,6 +2168,356 @@ function Admin() {
                           </div>
 
                         </div>
+                    </div>
+                  </details>
+  )
+
+  if (checkingSession) {
+    return null
+  }
+
+  return (
+    <main className="admin-layout admin-workspace">
+      <section className="admin-main">
+        <header className="admin-workspace-header">
+          <div className="admin-brand">
+            <div className="admin-brand-mark" aria-hidden="true"><span></span><span></span></div>
+            <div><strong>LEGADO MATERO</strong><small>ESTUDIO DE CONTENIDO</small></div>
+          </div>
+          <div className="admin-workspace-actions">
+            <a href="/" target="_blank" rel="noopener noreferrer">↗ Ver sitio</a>
+            <button type="button" onClick={async () => { await supabase.auth.signOut(); window.location.href='/admin' }}>
+              Cerrar sesión
+            </button>
+          </div>
+        </header>
+        <nav className="admin-tabs" aria-label="Secciones editables del sitio">
+          {menuItems.map((item) => (
+            <button type="button" key={item.id}
+              className={`admin-tab ${activeSection === item.id ? 'is-active' : ''}`}
+              aria-current={activeSection === item.id ? 'page' : undefined}
+              onClick={() => {
+                setActiveSection(item.id)
+                window.scrollTo({ top: 0, behavior: 'auto' })
+              }}>
+              <span className="admin-tab-icon" aria-hidden="true">{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <div className="admin-content">
+          <header className="admin-page-header">
+            <div>
+              <span className="admin-eyebrow">{currentSection.eyebrow}</span>
+              <h1>{currentSection.title}</h1>
+              <p>{currentSection.description}</p>
+            </div>
+            <span className="admin-workspace-indicator">EDITOR DEL SITIO <span aria-hidden="true">●</span></span>
+          </header>
+
+          {activeSection === 'inicio' && (
+            <div className="admin-settings">
+              <section className="admin-editor-card">
+
+                <div className="admin-editor-header">
+
+                  <div>
+                    <span>
+                      PORTADA DEL SITIO
+                    </span>
+
+                    <h2>
+                      Página principal
+                    </h2>
+                  </div>
+
+                  
+
+                </div>
+
+                <div className="admin-form-grid">
+
+                  {renderField(
+                    'Etiqueta superior',
+                    siteContent.home.eyebrow,
+                    (value) =>
+                      updateContent(
+                        'home',
+                        'eyebrow',
+                        value,
+                      ),
+                  )}
+
+                  {renderField(
+                    'Título principal',
+                    siteContent.home.title,
+                    (value) =>
+                      updateContent(
+                        'home',
+                        'title',
+                        value,
+                      ),
+                  )}
+
+                  <div className="admin-field-full">
+                    {renderField(
+                      'Descripción',
+                      siteContent.home
+                        .description,
+                      (value) =>
+                        updateContent(
+                          'home',
+                          'description',
+                          value,
+                        ),
+                      true,
+                    )}
+                  </div>
+
+                  {renderField(
+                    'Texto del botón',
+                    siteContent.home.button,
+                    (value) =>
+                      updateContent(
+                        'home',
+                        'button',
+                        value,
+                      ),
+                  )}
+
+                  {renderField(
+                    'Botón secundario (WhatsApp)',
+                    siteContent.home.whatsappButton || 'Consultar por WhatsApp',
+                    (value) => updateContent('home', 'whatsappButton', value),
+                  )}
+
+                  <div className="admin-field-full admin-home-images">
+                    <div className="admin-home-images-heading">
+                      <strong>Fotografías del inicio</strong>
+                      <p>Seleccioná cada imagen por separado. El logo de Legado Matero no se modifica.</p>
+                    </div>
+                    <div className="admin-home-images-grid">
+                      {[
+                        {
+                          field: 'heroMainImage',
+                          label: 'Imagen principal',
+                          hint: 'Fotografía grande que aparece a la derecha del Hero.',
+                          fallback: defaultHeroMain,
+                        },
+                        {
+                          field: 'heroDetailImage',
+                          label: 'Imagen de detalle',
+                          hint: 'Fotografía pequeña superpuesta a la principal.',
+                          fallback: defaultHeroDetail,
+                        },
+                      ].map(({ field, label, hint, fallback }) => (
+                        <div className="admin-home-image-card" key={field}>
+                          <div className={`admin-home-image-preview ${field === 'heroMainImage' ? 'is-main' : 'is-detail'}`}>
+                            <img
+                              src={siteContent.home[field] || fallback}
+                              alt={`Vista previa: ${label.toLowerCase()}`}
+                            />
+                          </div>
+                          <strong>{label}</strong>
+                          <p>{hint}</p>
+                          <div className="admin-home-image-actions">
+                            <label className="admin-home-image-upload">
+                              {processingHeroImage === field ? 'Procesando…' : 'Elegir fotografía'}
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                disabled={Boolean(processingHeroImage) || saving}
+                                onChange={(event) => handleHomeImage(field, event)}
+                                aria-label={`Elegir ${label.toLowerCase()}`}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="admin-home-image-reset"
+                              disabled={Boolean(processingHeroImage) || saving}
+                              onClick={() => updateContent('home', field, '')}
+                            >
+                              Usar original
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="admin-home-images-note" aria-live="polite">
+                      {processingHeroImage
+                        ? 'Preparando imagen…'
+                        : 'Las fotografías seleccionadas se publican al pulsar «Guardar cambios».'}
+                    </p>
+                  </div>
+
+                </div>
+
+              </section>
+              <div className="admin-save-bar">
+                <span>Guardá para publicar los cambios de esta sección en Supabase.</span>
+                <button type="button" className="admin-save-button"
+                  onClick={saveSiteContent}
+                  disabled={saving || Boolean(processingHeroImage) || Boolean(processingAboutImage)}>
+                  {saving ? 'Guardando…' : 'Guardar cambios'} <span aria-hidden="true">↗</span>
+                </button>
+              </div>
+            </div>
+          )}
+          {activeSection === 'legado' && (
+            <div className="admin-settings">
+              <section className="admin-editor-card">
+
+                <div className="admin-editor-header">
+
+                  <div>
+                    <span>
+                      RECORRIDO E HISTORIA
+                    </span>
+
+                    <h2>
+                      Historia y capítulos del recorrido
+                    </h2>
+                  </div>
+
+                  <button
+                    className="admin-add-button"
+                    onClick={
+                      addAboutPoint
+                    }
+                  >
+                    + Agregar capítulo
+                  </button>
+
+                </div>
+
+                <div className="admin-form-grid">
+
+                  {renderField(
+                    'Etiqueta',
+                    cleanSectionLabel(siteContent.about.eyebrow),
+                    (value) =>
+                      updateContent(
+                        'about',
+                        'eyebrow',
+                        value,
+                      ),
+                  )}
+
+                  {renderField(
+                    'Título',
+                    siteContent.about
+                      .title,
+                    (value) =>
+                      updateContent(
+                        'about',
+                        'title',
+                        value,
+                      ),
+                  )}
+
+                  <div className="admin-field-full">
+                    {renderField(
+                      'Texto principal',
+                      siteContent.about
+                        .lead,
+                      (value) =>
+                        updateContent(
+                          'about',
+                          'lead',
+                          value,
+                        ),
+                      true,
+                    )}
+                  </div>
+
+
+
+                </div>
+
+                <div className="admin-items-list">
+
+                  {aboutPoints.map(
+                    (point) => (
+                      <article
+                        className="admin-item-card"
+                        key={point.id}
+                      >
+
+                        <div className="admin-item-number">
+                          {
+                            point.number
+                          }
+                        </div>
+
+                        <div className="admin-item-fields">
+
+                          {renderField(
+                            'Título',
+                            point.title,
+                            (value) =>
+                              updateAboutPoint(
+                                point.id,
+                                'title',
+                                value,
+                              ),
+                          )}
+
+                          {renderField(
+                            'Descripción',
+                            point.description,
+                            (value) =>
+                              updateAboutPoint(
+                                point.id,
+                                'description',
+                                value,
+                              ),
+                            true,
+                          )}
+                          <div className="admin-chapter-media">
+                            <strong>Fotografía del capítulo</strong>
+                            <div className="admin-chapter-preview">
+                              {point.image ? (
+                                <img src={point.image} alt={`Vista previa de ${point.title}`} />
+                              ) : (
+                                <span>Sin fotografía personalizada: se mostrará la imagen original.</span>
+                              )}
+                            </div>
+                            <div className="admin-home-image-actions">
+                              <label className="admin-home-image-upload">
+                                {processingAboutImage === point.id ? 'Procesando…' : 'Elegir fotografía'}
+                                <input
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/webp"
+                                  disabled={saving || Boolean(processingAboutImage) || Boolean(processingHeroImage)}
+                                  onChange={(event) => handleAboutPointImage(point.id, event)}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                className="admin-home-image-reset"
+                                disabled={saving || Boolean(processingAboutImage)}
+                                onClick={() => updateAboutPoint(point.id, 'image', '')}
+                              >Usar original</button>
+                            </div>
+                            {renderField(
+                              'Descripción accesible de la fotografía (opcional)',
+                              point.imageAlt || '',
+                              (value) => updateAboutPoint(point.id, 'imageAlt', value),
+                            )}
+                          </div>
+
+                        </div>
+
+                        <button
+                          className="admin-delete-button"
+                          onClick={() =>
+                            deleteAboutPoint(
+                              point.id,
+                            )
+                          }
+                        >
+                          Eliminar
+                        </button>
 
                       </article>
                     ),
@@ -3218,34 +2526,520 @@ function Admin() {
                 </div>
 
               </section>
-
+              <section className="admin-editor-card admin-bridge-card">
+                <div className="admin-editor-header">
+                  <div>
+                    <span>MENSAJE INTERMEDIO</span>
+                    <h2>Entre la historia y los productos</h2>
+                    <p className="admin-card-hint">Este texto aparece después de los capítulos y antes de «Mates y accesorios con historia».</p>
+                  </div>
+                </div>
+                <div className="admin-form-grid">
+                  <div className="admin-field-full">
+                    {renderField(
+                      'Descripción',
+                      siteContent.about
+                        .description,
+                      (value) =>
+                        updateContent(
+                          'about',
+                          'description',
+                          value,
+                        ),
+                      true,
+                    )}
+                  </div>
+                </div>
+              </section>
               <div className="admin-save-bar">
-                <span>
-                  Las publicaciones e imágenes se guardan en Supabase.
-                </span>
-
-                <button
-                  className="admin-save-button"
-                  onClick={
-                    savePublications
-                  }
-                  disabled={saving}
-                >
-                  {saving
-                    ? 'Guardando...'
-                    : 'Guardar publicaciones'}
-                  <span>↗</span>
+                <span>Guardá para publicar los cambios de esta sección en Supabase.</span>
+                <button type="button" className="admin-save-button"
+                  onClick={saveSiteContent}
+                  disabled={saving || Boolean(processingHeroImage) || Boolean(processingAboutImage)}>
+                  {saving ? 'Guardando…' : 'Guardar cambios'} <span aria-hidden="true">↗</span>
                 </button>
               </div>
-
             </div>
           )}
+          {activeSection === 'productos' && (
+            <div className="admin-settings">
+              <section className="admin-editor-card">
 
+                <div className="admin-editor-header">
 
+                  <div>
+                    <span>
+                      SECCIÓN PRODUCTOS
+                    </span>
+
+                    <h2>
+                      Cierre comercial del recorrido
+                    </h2>
+                  </div>
+
+                  <button
+                    className="admin-add-button"
+                    onClick={addService}
+                  >
+                    + Agregar servicio
+                  </button>
+
+                </div>
+
+                <div className="admin-form-grid">
+
+                  {renderField(
+                    'Etiqueta',
+                    cleanSectionLabel(siteContent.services.eyebrow),
+                    (value) =>
+                      updateContent(
+                        'services',
+                        'eyebrow',
+                        value,
+                      ),
+                  )}
+
+                  {renderField(
+                    'Título',
+                    siteContent.services
+                      .title,
+                    (value) =>
+                      updateContent(
+                        'services',
+                        'title',
+                        value,
+                      ),
+                  )}
+
+                  <div className="admin-field-full">
+                    {renderField(
+                      'Descripción general',
+                      siteContent.services
+                        .description,
+                      (value) =>
+                        updateContent(
+                          'services',
+                          'description',
+                          value,
+                        ),
+                      true,
+                    )}
+                  </div>
+
+                </div>
+
+                <div className="admin-items-list">
+
+                  {services.map(
+                    (service) => (
+                      <article
+                        className="admin-item-card"
+                        key={service.id}
+                      >
+
+                        <div className="admin-item-number">
+                          {
+                            service.number
+                          }
+                        </div>
+
+                        <div className="admin-item-fields">
+
+                          {renderField(
+                            'Título',
+                            service.title,
+                            (value) =>
+                              updateService(
+                                service.id,
+                                'title',
+                                value,
+                              ),
+                          )}
+
+                          {renderField(
+                            'Descripción',
+                            service.description,
+                            (value) =>
+                              updateService(
+                                service.id,
+                                'description',
+                                value,
+                              ),
+                            true,
+                          )}
+
+                        </div>
+
+                        <button
+                          className="admin-delete-button"
+                          onClick={() =>
+                            deleteService(
+                              service.id,
+                            )
+                          }
+                        >
+                          Eliminar
+                        </button>
+
+                      </article>
+                    ),
+                  )}
+
+                </div>
+
+                <div className="admin-featured-selection">
+                  <div className="admin-home-images-heading">
+                    <strong>Productos destacados del recorrido</strong>
+                    <p>Elegí hasta tres publicaciones del catálogo para la galería «Mates y accesorios con historia». Antes se mostraban automáticamente las primeras tres con foto.</p>
+                  </div>
+                  <div className="admin-featured-grid">
+                    {[0, 1, 2].map((slot) => (
+                      <label key={slot} className="admin-field">
+                        <span>Destacado {slot + 1}</span>
+                        <select
+                          value={featuredProductIds[slot] || ''}
+                          onChange={(event) => changeFeaturedProduct(slot, event.target.value)}
+                          disabled={saving}
+                        >
+                          <option value="">Sin producto</option>
+                          {eligibleFeaturedProducts.map((item) => (
+                            <option key={item.id} value={String(item.id)}>
+                              {item.title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="admin-home-images-note">Solo aparecen productos publicados con fotografía. Guardá los cambios para aplicar la selección.</p>
+                </div>
+
+              </section>
+              <div className="admin-save-bar">
+                <span>Guardá para publicar los cambios de esta sección en Supabase.</span>
+                <button type="button" className="admin-save-button"
+                  onClick={saveSiteContent}
+                  disabled={saving || Boolean(processingHeroImage) || Boolean(processingAboutImage)}>
+                  {saving ? 'Guardando…' : 'Guardar cambios'} <span aria-hidden="true">↗</span>
+                </button>
+              </div>
+            </div>
+          )}
+          {activeSection === 'catalogo' && (
+            <div className="admin-settings">
+              <section className="admin-editor-card">
+
+                <div className="admin-editor-header">
+
+                  <div>
+                    <span>
+                      PRESENTACIÓN DEL CATÁLOGO
+                    </span>
+
+                    <h2>
+                      Sección de catálogo
+                    </h2>
+                  </div>
+
+                  
+
+                </div>
+
+                <div className="admin-form-grid">
+
+                  {renderField(
+                    'Etiqueta',
+                    cleanSectionLabel(siteContent.catalog.eyebrow),
+                    (value) =>
+                      updateContent(
+                        'catalog',
+                        'eyebrow',
+                        value,
+                      ),
+                  )}
+
+                  {renderField(
+                    'Título',
+                    siteContent.catalog
+                      .title,
+                    (value) =>
+                      updateContent(
+                        'catalog',
+                        'title',
+                        value,
+                      ),
+                  )}
+
+                  <div className="admin-field-full">
+                    {renderField(
+                      'Descripción',
+                      siteContent.catalog
+                        .description,
+                      (value) =>
+                        updateContent(
+                          'catalog',
+                          'description',
+                          value,
+                        ),
+                      true,
+                    )}
+                  </div>
+
+                </div>
+
+              </section>
+              <div className="admin-save-bar">
+                <span>Guardá para publicar los cambios de esta sección en Supabase.</span>
+                <button type="button" className="admin-save-button"
+                  onClick={saveSiteContent}
+                  disabled={saving || Boolean(processingHeroImage) || Boolean(processingAboutImage)}>
+                  {saving ? 'Guardando…' : 'Guardar cambios'} <span aria-hidden="true">↗</span>
+                </button>
+              </div>
+              <section className="admin-editor-card admin-catalog-manager">
+                <div className="admin-editor-header">
+                  <div>
+                    <span>GESTIÓN DEL CATÁLOGO</span>
+                    <h2>Categorías y productos</h2>
+                    <p className="admin-card-hint">Abrí una categoría y después el producto que quieras editar. Los demás permanecen cerrados.</p>
+                  </div>
+                  <div className="admin-header-actions">
+                    <button type="button" className="admin-add-button" onClick={addCategory}>+ Categoría</button>
+                    <button type="button" className="admin-add-button" onClick={addPublication}>+ Producto</button>
+                  </div>
+                </div>
+
+                <div className="admin-accordion-list">
+                  {categories.map((category) => {
+                    const categoryProducts = publications.filter((publication) => publication.category === category.name)
+                    return (
+                    <details className="admin-accordion-category" key={category.id}>
+                      <summary className="admin-category-summary">
+                        <span className="admin-category-thumbnail">
+                          {category.image ? <img src={category.image} alt="" loading="lazy" /> : <span aria-hidden="true">▦</span>}
+                        </span>
+                        <strong>{category.name || 'Categoría sin nombre'}</strong>
+                        <small>{categoryProducts.length} {categoryProducts.length === 1 ? 'producto' : 'productos'}</small>
+                        <span className="admin-collapse-indicator" aria-hidden="true">⌄</span>
+                      </summary>
+                      <div className="admin-category-editor">
+                        <h3>Editar categoría</h3>
+                      <div className="admin-form-grid admin-category-form">
+                        {renderField('Nombre de categoría', category.name,
+                          (value) => updateCategory(category.id, 'name', value))}
+                        {renderField('Descripción', category.description,
+                          (value) => updateCategory(category.id, 'description', value), true)}
+                        <div className="admin-field-full admin-category-photo">
+                          <label className="admin-field">
+                            <span>Imagen de categoría</span>
+                            <input type="file" accept="image/jpeg,image/png,image/webp"
+                              onChange={(event) => handleCategoryImage(category.id,event)} disabled={saving} />
+                          </label>
+                          {category.image && <img className="admin-category-photo-preview" src={category.image} alt={`Vista previa de ${category.name}`} />}
+                          {category.image && <button type="button" className="admin-delete-button"
+                            onClick={() => updateCategory(category.id, 'image', '')}>Quitar imagen</button>}
+                        </div>
+                        <button type="button" className="admin-delete-button admin-danger-end"
+                          onClick={() => {if(window.confirm('¿Eliminar esta categoría? Los productos no se borrarán, pero pueden quedar sin categoría.')) deleteCategory(category.id)}}>
+                          Eliminar categoría
+                        </button>
+                      </div>
+                        <div className="admin-nested-product-header">
+                          <h3>Productos de esta categoría</h3>
+                          <span>{categoryProducts.length} en total</span>
+                        </div>
+                        <div className="admin-product-list">
+                          {categoryProducts.map((publication, index) => (
+renderProductAccordion(publication, index)
+                          ))}
+                          {categoryProducts.length === 0 && <p className="admin-list-empty">Todavía no hay productos en esta categoría. Usá «+ Producto» y elegí su categoría.</p>}
+                        </div>
+                      </div>
+                    </details>
+                    )
+                  })}
+                  {publications.some((publication) => !categories.some((category) => category.name === publication.category)) && (
+                    <details className="admin-accordion-category">
+                      <summary className="admin-category-summary">
+                        <span className="admin-category-thumbnail"><span aria-hidden="true">?</span></span>
+                        <strong>Sin categoría asignada</strong>
+                        <small>Revisar asignaciones</small>
+                        <span className="admin-collapse-indicator" aria-hidden="true">⌄</span>
+                      </summary>
+                      <div className="admin-category-editor">
+                        <p className="admin-card-hint">Estos productos pertenecen a una categoría inexistente o todavía no tienen una. Abrí uno y elegí su nueva categoría.</p>
+                        <div className="admin-product-list">
+                          {publications.filter((publication) => !categories.some((category) => category.name === publication.category)).map((publication, index) => (
+renderProductAccordion(publication, index)
+                          ))}
+                        </div>
+                      </div>
+                    </details>
+                  )}
+                  {!categories.length && !publications.length && <p className="admin-list-empty">Empezá agregando tu primera categoría.</p>}
+                </div>
+              </section>
+              <div className="admin-save-bar admin-save-inventory">
+                <span>Guarda las categorías y todos los productos, incluidas fotos y visibilidad.</span>
+                <button type="button" className="admin-save-button"
+                  onClick={saveCatalogInventory} disabled={saving}>
+                  {saving ? 'Guardando…' : 'Guardar categorías y productos'}
+                  <span aria-hidden="true">↗</span>
+                </button>
+              </div>
+            </div>
+          )}
+          {activeSection === 'contacto' && (
+            <div className="admin-settings">
+              <section className="admin-editor-card">
+
+                <div className="admin-editor-header">
+
+                  <div>
+                    <span>
+                      CIERRE DEL SITIO
+                    </span>
+
+                    <h2>
+                      Información de contacto
+                    </h2>
+                  </div>
+
+                </div>
+
+                <div className="admin-form-grid">
+
+                  {renderField(
+                    'Etiqueta',
+                    cleanSectionLabel(siteContent.contact.eyebrow),
+                    (value) =>
+                      updateContent(
+                        'contact',
+                        'eyebrow',
+                        value,
+                      ),
+                  )}
+
+                  {renderField(
+                    'Título',
+                    siteContent.contact
+                      .title,
+                    (value) =>
+                      updateContent(
+                        'contact',
+                        'title',
+                        value,
+                      ),
+                  )}
+
+                  <div className="admin-field-full">
+                    {renderField(
+                      'Descripción',
+                      siteContent.contact
+                        .description,
+                      (value) =>
+                        updateContent(
+                          'contact',
+                          'description',
+                          value,
+                        ),
+                      true,
+                    )}
+                  </div>
+
+                  <div className="admin-field-full admin-contact-media">
+                    <div className="admin-home-images-heading">
+                      <strong>Imagen de la sección Contacto</strong>
+                      <p>Personalizá la fotografía del cierre de la página. No cambia las imágenes del Hero ni de los capítulos.</p>
+                    </div>
+                    <div className="admin-home-image-preview admin-contact-preview">
+                      <img
+                        src={siteContent.contact.bannerImage || defaultHeroMain}
+                        alt="Vista previa de la imagen de contacto"
+                      />
+                    </div>
+                    <div className="admin-home-image-actions">
+                      <label className="admin-home-image-upload">
+                        {processingHeroImage === 'contactBannerImage' ? 'Procesando…' : 'Elegir fotografía'}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          disabled={saving || Boolean(processingHeroImage) || Boolean(processingAboutImage)}
+                          onChange={handleContactBanner}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="admin-home-image-reset"
+                        disabled={saving || Boolean(processingHeroImage)}
+                        onClick={() => updateContent('contact', 'bannerImage', '')}
+                      >Usar original</button>
+                    </div>
+                  </div>
+
+                  {renderField(
+                    'WhatsApp',
+                    siteContent.contact
+                      .whatsapp,
+                    (value) =>
+                      updateContent(
+                        'contact',
+                        'whatsapp',
+                        value,
+                      ),
+                  )}
+
+                  {renderField(
+                    'LinkedIn',
+                    siteContent.contact
+                      .linkedin,
+                    (value) =>
+                      updateContent(
+                        'contact',
+                        'linkedin',
+                        value,
+                      ),
+                  )}
+
+                  {renderField(
+                    'Instagram (usuario o link)',
+                    siteContent.contact
+                      .instagram || '',
+                    (value) =>
+                      updateContent(
+                        'contact',
+                        'instagram',
+                        value,
+                      ),
+                  )}
+
+                  {renderField(
+                    'Fiverr (usuario o link)',
+                    siteContent.contact
+                      .fiverr || '',
+                    (value) =>
+                      updateContent(
+                        'contact',
+                        'fiverr',
+                        value,
+                      ),
+                  )}
+
+                </div>
+
+              </section>
+              <div className="admin-save-bar">
+                <span>Guardá para publicar los cambios de esta sección en Supabase.</span>
+                <button type="button" className="admin-save-button"
+                  onClick={saveSiteContent}
+                  disabled={saving || Boolean(processingHeroImage) || Boolean(processingAboutImage)}>
+                  {saving ? 'Guardando…' : 'Guardar cambios'} <span aria-hidden="true">↗</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-
       </section>
-
     </main>
   )
 }

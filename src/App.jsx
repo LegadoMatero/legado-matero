@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import banner from './assets/banner-productos.jpg'
 import contactBanner from './assets/banner-contacto.jpg'
-import logo from './assets/logo.png'
-import heroImage from './assets/home-hero.jpg'
+import brandSeal from './assets/brand-seal.png'
 import Login from './pages/Login.jsx'
 import Admin from './pages/Admin.jsx'
 import {
@@ -22,12 +21,15 @@ const DEFAULT_SITE_CONTENT = {
     description:
       'Cada mate tiene una historia. Nosotros queremos ayudarte a seguir compartiéndola.',
     button: 'Conocé nuestros mates',
+    heroMainImage: '',
+    heroDetailImage: '',
   },
   services: {
     eyebrow: '01 / PRODUCTOS',
     title: 'Mates y accesorios con historia.',
     description:
       'Seleccionamos y cuidamos cada mate, termo y bombilla para que sigan acompañando charlas, familias y amistades.',
+    featuredProductIds: null,
   },
   about: {
     eyebrow: '02 / NOSOTROS',
@@ -53,6 +55,7 @@ const DEFAULT_SITE_CONTENT = {
     instagram: '',
     fiverr: '',
     email: DEFAULT_EMAIL,
+    bannerImage: '',
   },
 }
 
@@ -1669,6 +1672,19 @@ function EmailModal({
 }
 
 function PublicSite() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+
+  useEffect(() => {
+    if (!isMenuOpen) return undefined
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsMenuOpen(false)
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isMenuOpen])
+
   const [catalog, setCatalog] =
     useState([])
 
@@ -1736,6 +1752,34 @@ function PublicSite() {
       )
     }
   }, [])
+
+  // El contenido permanece visible si el navegador no soporta IntersectionObserver
+  // o si la persona prefiere reducir el movimiento.
+  useEffect(() => {
+    const section = document.getElementById('legado')
+    if (
+      !section ||
+      !('IntersectionObserver' in window) ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) return undefined
+
+    const chapters = section.querySelectorAll('.legacy-scene, .legacy-manifesto')
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible')
+          observer.unobserve(entry.target)
+        }
+      })
+    }, { threshold: 0.18, rootMargin: '0px 0px -12% 0px' })
+
+    section.classList.add('legacy-reveal-enabled')
+    chapters.forEach((chapter) => observer.observe(chapter))
+    return () => {
+      observer.disconnect()
+      section.classList.remove('legacy-reveal-enabled')
+    }
+  }, [aboutPoints])
 
   const loadRequestRef = useRef(0)
 
@@ -2068,6 +2112,16 @@ function PublicSite() {
   const content =
     siteContent || DEFAULT_SITE_CONTENT
 
+  // Sin selección explícita se conserva el comportamiento anterior.
+  // Después de guardar destacados, se respetan exclusivamente esos IDs.
+  const availableFeaturedProducts = catalog.filter((item) => item.coverImage)
+  const selectedFeaturedIds = content.services?.featuredProductIds
+  const featuredProducts = Array.isArray(selectedFeaturedIds)
+    ? selectedFeaturedIds.slice(0, 3)
+        .map((id) => availableFeaturedProducts.find((item) => String(item.id) === String(id)))
+        .filter(Boolean)
+    : availableFeaturedProducts.slice(0, 3)
+
   const whatsappNumber =
     content.contact?.whatsapp ||
     ''
@@ -2337,274 +2391,238 @@ function PublicSite() {
   return (
     <main className="site">
       <header className="navbar">
-        <a
-          href="#inicio"
-          className="logo"
-          aria-label="Ir al inicio"
-          onClick={() => {
-            if (
-              detailHistoryRef.current
-            ) {
-              window.history.back()
-            } else {
-              closeDetail()
-            }
-
-            closeEmail()
-          }}
-        >
-          <img
-            src={logo}
-            alt="LEGADO MATERO"
-          />
-        </a>
-
-        <nav>
-          <a href="#inicio">
-            Inicio
+        <div className="navbar-inner">
+          <a
+            href="#inicio"
+            className="logo"
+            aria-label="Legado Matero — ir al inicio"
+            onClick={() => {
+              setIsMenuOpen(false)
+              if (detailHistoryRef.current) {
+                window.history.back()
+              } else {
+                closeDetail()
+              }
+              closeEmail()
+            }}
+          >
+            <img src={brandSeal} alt="" />
+            <span className="logo-wordmark" aria-hidden="true">
+              <strong>LEGADO</strong>
+              <small>MATERO · SR</small>
+            </span>
           </a>
 
-          <a href="#servicios">
-            Productos
+          <nav
+            id="primary-navigation"
+            className={`nav-links${isMenuOpen ? ' is-open' : ''}`}
+            aria-label="Navegación principal"
+          >
+            <a href="#inicio" onClick={() => setIsMenuOpen(false)}>Inicio</a>
+            <a href="#legado" onClick={() => setIsMenuOpen(false)}>Nuestro legado</a>
+            <a href="#catalogo" onClick={() => setIsMenuOpen(false)}>Catálogo</a>
+            <a href="#contacto" onClick={() => setIsMenuOpen(false)}>Contacto</a>
+          </nav>
+
+          <a className="navbar-cta" href="#contacto">
+            Hablemos <span aria-hidden="true">↗</span>
           </a>
 
-          <a href="#nosotros">
-            Nosotros
-          </a>
-
-          <a href="#catalogo">
-            Catálogo
-          </a>
-
-          <a href="#contacto">
-            Contacto
-          </a>
-        </nav>
+          <button
+            type="button"
+            className={`menu-toggle${isMenuOpen ? ' is-open' : ''}`}
+            aria-label={isMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
+            aria-controls="primary-navigation"
+            aria-expanded={isMenuOpen}
+            onClick={() => setIsMenuOpen((current) => !current)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+        </div>
       </header>
 
-      <section
-        id="inicio"
-        className="hero"
-      >
-        <div className="hero-text">
-          <p className="eyebrow">
-            {content.home.eyebrow}
-          </p>
+      <section id="inicio" className="hero" aria-labelledby="hero-title">
+        <div className="hero-inner">
+          <div className="hero-text">
+            <div className="hero-identity">
+              <img
+                src={brandSeal}
+                alt="Logo de Legado Matero"
+                className="hero-brand-seal"
+                width="136"
+                height="136"
+              />
+              <div className="hero-identity-copy">
+                <span className="hero-identity-line" aria-hidden="true" />
+                <p className="eyebrow">{content.home.eyebrow}</p>
+              </div>
+            </div>
 
-          <h1>
-            {renderHighlightedTitle(
-              content.home.title,
-            )}
-          </h1>
+            <h1 id="hero-title">
+              {renderHighlightedTitle(content.home.title)}
+            </h1>
 
-          <p className="hero-description">
-            {content.home.description}
-          </p>
+            <p className="hero-description">{content.home.description}</p>
 
-          <a
-            href="#servicios"
-            className="hero-button"
-          >
-            {content.home.button}
-          </a>
-        </div>
-
-        <div className="hero-visual">
-          <img
-            src={heroImage}
-            alt="Legado Matero"
-            className="hero-image"
-          />
-        </div>
-      </section>
-
-      <section
-        id="servicios"
-        className="services"
-      >
-        <div className="services-header">
-          <div className="services-banner">
-            <img
-              src={banner}
-              alt="Productos Legado Matero"
-              className="services-banner-image"
-            />
-          </div>
-
-          <div className="services-text">
-            <p className="section-label">
-              {content.services.eyebrow}
-            </p>
-
-            <h2>
-              {renderHighlightedTitle(
-                content.services.title,
-              )}
-            </h2>
-
-            <p className="services-intro">
-              {
-                content.services
-                  .description
-              }
-            </p>
-          </div>
-        </div>
-
-        <div className="services-grid">
-          {services.map(
-            (
-              service,
-              index,
-            ) => (
-              <article
-                className="service-card"
-                key={
-                  service.id ||
-                  index
-                }
+            <div className="hero-actions">
+              <a href="#catalogo" className="hero-button hero-button-primary">
+                {content.home.button}
+                <span aria-hidden="true">↗</span>
+              </a>
+              <a
+                href={whatsappLink}
+                className="hero-button hero-button-secondary"
+                target={cleanWhatsapp ? '_blank' : undefined}
+                rel={cleanWhatsapp ? 'noopener noreferrer' : undefined}
               >
-                <div className="service-top">
-                  <span>
-                    {service.number ||
-                      String(
-                        index + 1,
-                      ).padStart(
-                        2,
-                        '0',
-                      )}
-                  </span>
+                {cleanWhatsapp ? (content.home.whatsappButton || 'Consultar por WhatsApp') : 'Contactanos'}
+                <span aria-hidden="true">↗</span>
+              </a>
+            </div>
 
-                  <div className="service-mark">
-                    <svg
-                      className="service-icon"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <line
-                        x1="6"
-                        y1="4"
-                        x2="16.5"
-                        y2="14.5"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                      />
-                      <circle
-                        cx="6"
-                        cy="4"
-                        r="1.7"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                      />
-                      <ellipse
-                        cx="19"
-                        cy="17"
-                        rx="3.1"
-                        ry="2.1"
-                        transform="rotate(45 19 17)"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                      />
-                    </svg>
-                  </div>
-                </div>
-
-                <div className="service-content">
-                  <h3>
-                    {
-                      service.title
-                    }
-                  </h3>
-
-                  <p>
-                    {
-                      service.description
-                    }
-                  </p>
-                </div>
-
-                <a
-                  href="#catalogo"
-                  className="service-more"
-                >
-                  Ver más
-                  <span>↗</span>
-                </a>
-              </article>
-            ),
-          )}
-        </div>
-      </section>
-
-      <section
-        id="nosotros"
-        className="about"
-      >
-        <div className="about-header">
-          <p className="section-label">
-            {content.about.eyebrow}
-          </p>
-
-          <h2>
-            {renderHighlightedTitle(
-              content.about.title,
-            )}
-          </h2>
-        </div>
-
-        <div className="about-content">
-          <div className="about-main">
-            <p className="about-lead">
-              {content.about.lead}
-            </p>
-
-            <p>
-              {
-                content.about
-                  .description
-              }
+            <p className="hero-signature">
+              <span aria-hidden="true">✳</span>
+              Una tradición que nos encuentra.
             </p>
           </div>
 
-          <div className="about-side">
-            {aboutPoints.map(
-              (
-                point,
-                index,
-              ) => (
-                <div
-                  className="about-line"
-                  key={
-                    point.id ||
-                    index
-                  }
-                >
-                  <span>
-                    {point.number ||
-                      String(
-                        index + 1,
-                      ).padStart(
-                        2,
-                        '0',
-                      )}
-                  </span>
+          <div className="hero-visual">
+            <div className="hero-photo">
+              <img
+                src={content.home.heroMainImage || contactBanner}
+                alt="Fotografía principal de Legado Matero"
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
+              />
+              <div className="hero-photo-caption" aria-hidden="true">
+                <span>COMPARTIR ES PARTE DEL LEGADO</span>
+                <span>01 / 02</span>
+              </div>
+            </div>
+            <div className="hero-detail">
+              <img
+                src={content.home.heroDetailImage || banner}
+                alt="Fotografía de detalle de Legado Matero"
+                loading="lazy"
+                decoding="async"
+              />
+              <span>El valor está en cada detalle.</span>
+            </div>
+            <span className="hero-visual-mark" aria-hidden="true">LM.</span>
+          </div>
+        </div>
+        <a className="hero-discover" href="#legado">
+          <span>DESCUBRÍ EL LEGADO</span>
+          <span aria-hidden="true">↓</span>
+        </a>
+      </section>
 
-                  <strong>
-                    {
-                      point.title
-                    }
-                  </strong>
+      {/* Un único recorrido editorial, alimentado por las secciones existentes del CMS. */}
+      <section id="legado" className="legacy-story" aria-labelledby="legacy-title">
+        <div className="legacy-intro">
+          <div className="legacy-intro-index" aria-hidden="true">
+            <span>01 — {String(Math.max(aboutPoints.length, 1)).padStart(2, '0')}</span>
+            <span>UNA HISTORIA PARA COMPARTIR</span>
+          </div>
+          <div className="legacy-intro-copy">
+            <p className="section-label">{hideDecorativeSectionIndex(content.about.eyebrow)}</p>
+            <h2 id="legacy-title">{renderHighlightedTitle(content.about.title)}</h2>
+            <p className="legacy-intro-lead">{content.about.lead}</p>
+          </div>
+          <p className="legacy-intro-side">Los momentos que importan no se guardan. Se comparten.</p>
+        </div>
 
-                  <p>
-                    {
-                      point.description
-                    }
+        <div className="legacy-scenes">
+          {aboutPoints.map((point, index) => {
+            const fallbackPhotos = [contactBanner, banner]
+            const productPhoto = catalog.find((item) => item.coverImage)?.coverImage
+            const fallbackImage = index % 3 === 2
+              ? productPhoto || contactBanner
+              : fallbackPhotos[index % 2]
+            const sceneImage = point.image || fallbackImage
+
+            return (
+              <article
+                className={`legacy-scene${index % 2 === 1 ? ' legacy-scene--reverse' : ''}`}
+                key={point.id || index}
+              >
+                <figure className="legacy-scene-image">
+                  <img
+                    src={sceneImage}
+                    alt={point.imageAlt?.trim() || `Imagen del capítulo ${point.title}`}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <figcaption>LEGADO MATERO <span aria-hidden="true">✳</span> ARGENTINA</figcaption>
+                </figure>
+                <div className="legacy-scene-copy">
+                  <p className="legacy-scene-count">
+                    <span>{String(index + 1).padStart(2, '0')}</span>
+                    <span className="legacy-scene-count-line" aria-hidden="true" />
+                    <span>{String(aboutPoints.length).padStart(2, '0')}</span>
                   </p>
+                  <p className="legacy-scene-kicker">CAPÍTULO {String(index + 1).padStart(2, '0')}</p>
+                  <h3>{point.title}</h3>
+                  <p className="legacy-scene-description">{point.description}</p>
+                  <span className="legacy-scene-asterisk" aria-hidden="true">✳</span>
                 </div>
-              ),
-            )}
+              </article>
+            )
+          })}
+        </div>
+
+        <div className="legacy-manifesto">
+          <span className="legacy-manifesto-mark" aria-hidden="true">✳</span>
+          <p>{content.about.description}</p>
+          <span className="legacy-manifesto-credit">UNA TRADICIÓN QUE SIGUE VIVA</span>
+        </div>
+
+        <div className="legacy-collection">
+          <div className="legacy-collection-heading">
+            <div>
+              <p className="section-label">{hideDecorativeSectionIndex(content.services.eyebrow)}</p>
+              <h2>{renderHighlightedTitle(content.services.title)}</h2>
+            </div>
+            <p>{content.services.description}</p>
+          </div>
+
+          <div className="legacy-offerings">
+            {services.map((service, index) => (
+              <div className="legacy-offering" key={service.id || index}>
+                <h3>{service.title}</h3>
+                <p>{service.description}</p>
+              </div>
+            ))}
+          </div>
+
+          {featuredProducts.length > 0 && (
+            <div className="legacy-product-gallery" aria-label="Productos destacados del catálogo">
+              {featuredProducts.map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  className="legacy-product-tile"
+                  onClick={() => openDetail(item, 'catalog')}
+                  aria-label={`Ver ficha de ${item.title}`}
+                >
+                  <img src={item.coverImage} alt={item.title} loading="lazy" decoding="async" />
+                  <span className="legacy-product-tile-info">
+                    <strong>{item.title}</strong>
+                    <span aria-hidden="true">↗</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="legacy-collection-footer">
+            <span>EL PRÓXIMO MATE, LA PRÓXIMA HISTORIA.</span>
+            <a className="legacy-collection-link" href="#catalogo">
+              Explorar el catálogo <span aria-hidden="true">↗</span>
+            </a>
           </div>
         </div>
       </section>
@@ -2616,7 +2634,7 @@ function PublicSite() {
         <div className="catalog-header">
           <div>
             <p className="section-label">
-              {content.catalog.eyebrow}
+              {hideDecorativeSectionIndex(content.catalog.eyebrow)}
             </p>
 
             <h2>
@@ -2769,7 +2787,7 @@ function PublicSite() {
           <div className="contact-inner contact-inner-centered">
             <div className="contact-header">
               <p className="section-label">
-                {content.contact.eyebrow}
+                {hideDecorativeSectionIndex(content.contact.eyebrow)}
               </p>
 
               <h2>
@@ -2835,8 +2853,8 @@ function PublicSite() {
 
           <div className="contact-banner">
             <img
-              src={contactBanner}
-              alt="Legado Matero"
+              src={content.contact.bannerImage || contactBanner}
+              alt="Imagen de contacto de Legado Matero"
               className="contact-banner-image"
             />
           </div>
@@ -2897,7 +2915,15 @@ function PublicSite() {
         </div>
 
         <div className="dev-credit">
-          <span>Desarrollado por PLANO LABS</span>
+          <a
+            href="https://plano-labs.vercel.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="dev-credit-brand"
+            aria-label="Desarrollado por PLANO LABS — visitar sitio"
+          >
+            Desarrollado por PLANO LABS
+          </a>
 
           <a href="mailto:plano.labs.ideas@gmail.com">
             plano.labs.ideas@gmail.com
@@ -2944,6 +2970,8 @@ function PublicSite() {
     </main>
   )
 }
+
+const hideDecorativeSectionIndex = (label) => String(label || '').replace(/^\s*\d{1,2}\s*[\/\-–—]\s*/, '')
 
 function App() {
   const path =

@@ -77,7 +77,11 @@ export async function uploadDataUrl(folder, dataUrl) {
   }
 
   const blob = dataUrlToBlob(dataUrl)
-  const path = `${folder}/${crypto.randomUUID()}.jpg`
+  // La extensión debe coincidir con el MIME real para conservar transparencia.
+  const extension = blob.type === 'image/png' ? 'png'
+    : blob.type === 'image/webp' ? 'webp'
+      : 'jpg'
+  const path = `${folder}/${crypto.randomUUID()}.${extension}`
 
   const { error } = await supabase.storage.from('site-media').upload(path, blob, {
     contentType: blob.type || 'image/jpeg',
